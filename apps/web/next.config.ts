@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Habilita análise de pacotes em build
+  // Gera saída compacta para Docker/Railway
+  output: "standalone",
   experimental: {
     typedRoutes: true,
   },
