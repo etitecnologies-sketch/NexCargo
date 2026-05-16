@@ -1,4 +1,8 @@
-# 📦 NexCargo
+<p align="center">
+  <img src="img/logo.png" alt="NexCargo" width="220" />
+</p>
+
+# NexCargo
 
 > **Central Operacional Inteligente de Logística**
 > Plataforma SaaS multi-tenant para transportadoras, delivery urbano e operadores logísticos regionais.
