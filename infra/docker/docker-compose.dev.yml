@@ -1,0 +1,116 @@
+version: "3.9"
+
+# ===========================================
+# NEXCARGO — Ambiente de Desenvolvimento
+# Rode com: npm run docker:up
+# ===========================================
+
+services:
+
+  # --- BANCO DE DADOS POSTGRES ---
+  # É onde todos os dados ficam guardados: pedidos, clientes, entregas...
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexcargo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexcargo
+      POSTGRES_USER: nexcargo
+      POSTGRES_PASSWORD: nexcargo_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexcargo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- REDIS ---
+  # É como uma "memória rápida" — guarda filas de tarefas e cache
+  redis:
+    image: redis:7-alpine
+    container_name: nexcargo_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- N8N ---
+  # É o robô de automações — conecta WhatsApp, banco, APIs sem escrever código
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: nexcargo_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-nexcargo123}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678}
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=nexcargo
+      - DB_POSTGRESDB_USER=nexcargo
+      - DB_POSTGRESDB_PASSWORD=nexcargo_dev_password
+      - DB_POSTGRESDB_SCHEMA=n8n
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - EXECUTIONS_MODE=queue
+      - N8N_ENCRYPTION_KEY=nexcargo_n8n_encryption_key_dev
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ../../n8n/workflows:/home/node/.n8n/workflows
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # --- EVOLUTION API ---
+  # É o conector com o WhatsApp — transforma mensagens em dados do sistema
+  evolution_api:
+    image: atendai/evolution-api:latest
+    container_name: nexcargo_evolution
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_URL=http://localhost:8080
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-nexcargo_evolution_key}
+      - DATABASE_ENABLED=true
+      - DATABASE_CONNECTION_URI=postgresql://nexcargo:nexcargo_dev_password@postgres:5432/nexcargo
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution
+      - REDIS_ENABLED=true
+      - REDIS_URI=redis://redis:6379
+      - REDIS_PREFIX_KEY=evolution
+      - LOG_LEVEL=ERROR
+      - DEL_INSTANCE=false
+    volumes:
+      - evolution_data:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+# --- VOLUMES (onde os dados ficam salvos no seu computador) ---
+volumes:
+  postgres_data:
+  redis_data:
+  n8n_data:
+  evolution_data:

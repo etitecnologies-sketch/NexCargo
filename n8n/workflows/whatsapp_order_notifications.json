@@ -1,0 +1,81 @@
+{
+  "name": "NexCargo — Notificações WhatsApp de Pedidos",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "seconds", "secondsInterval": 30 }]
+        }
+      },
+      "id": "trigger-interval",
+      "name": "A cada 30 segundos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT nl.id, nl.order_id, nl.trigger, o.tracking_code, o.recipient_name, o.recipient_phone, o.status, o.destination_address, o.estimated_delivery_date FROM notifications_log nl JOIN orders o ON o.id = nl.order_id WHERE nl.status = 'pending' AND nl.type = 'whatsapp' AND o.recipient_phone IS NOT NULL LIMIT 10"
+      },
+      "id": "fetch-pending",
+      "name": "Buscar notificações pendentes",
+      "type": "n8n-nodes-base.postgres",
+      "position": [460, 300],
+      "credentials": { "postgres": { "id": "nexcargo-postgres", "name": "NexCargo Postgres" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst messages = [];\n\nconst templates = {\n  pending: '⏳ Olá *{{recipient_name}}*! Seu pedido *{{tracking_code}}* foi recebido e está aguardando coleta.',\n  collected: '📦 Seu pedido *{{tracking_code}}* foi coletado e está a caminho do nosso centro de distribuição.',\n  in_transit: '🚛 *{{tracking_code}}* está em trânsito! Previsão de entrega: *{{estimated_date}}*.',\n  out_for_delivery: '🚀 Ótimas notícias! Seu pedido *{{tracking_code}}* saiu para entrega hoje! Fique em casa!',\n  delivered: '✅ Pedido *{{tracking_code}}* entregue com sucesso! Obrigado por confiar na NexCargo.',\n  failed: '⚠️ Não conseguimos entregar seu pedido *{{tracking_code}}* hoje. Tentaremos novamente em breve.',\n  returned: '↩️ Seu pedido *{{tracking_code}}* foi devolvido ao remetente. Entre em contato conosco.'\n};\n\nfor (const item of items) {\n  const data = item.json;\n  const template = templates[data.trigger] || templates[data.status];\n  if (!template) continue;\n  \n  const message = template\n    .replace('{{recipient_name}}', data.recipient_name)\n    .replace('{{tracking_code}}', data.tracking_code)\n    .replace('{{estimated_date}}', data.estimated_delivery_date || 'em breve');\n  \n  messages.push({\n    json: {\n      notification_id: data.id,\n      phone: data.recipient_phone,\n      message,\n      tracking_code: data.tracking_code\n    }\n  });\n}\n\nreturn messages;"
+      },
+      "id": "format-messages",
+      "name": "Formatar mensagens",
+      "type": "n8n-nodes-base.code",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL }}/message/sendText/nexcargo-instance",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "number", "value": "={{ $json.phone }}" },
+            { "name": "text", "value": "={{ $json.message }}" }
+          ]
+        },
+        "options": {
+          "response": { "response": { "responseFormat": "json" } }
+        }
+      },
+      "id": "send-whatsapp",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 300],
+      "credentials": { "httpHeaderAuth": { "id": "evolution-api-key", "name": "Evolution API Key" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE notifications_log SET status = 'sent', sent_at = NOW(), recipient = '{{ $json.phone }}' WHERE id = '{{ $json.notification_id }}'"
+      },
+      "id": "mark-sent",
+      "name": "Marcar como enviado",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1120, 300],
+      "credentials": { "postgres": { "id": "nexcargo-postgres", "name": "NexCargo Postgres" } }
+    }
+  ],
+  "connections": {
+    "A cada 30 segundos": { "main": [[{ "node": "Buscar notificações pendentes", "type": "main", "index": 0 }]] },
+    "Buscar notificações pendentes": { "main": [[{ "node": "Formatar mensagens", "type": "main", "index": 0 }]] },
+    "Formatar mensagens": { "main": [[{ "node": "Enviar WhatsApp", "type": "main", "index": 0 }]] },
+    "Enviar WhatsApp": { "main": [[{ "node": "Marcar como enviado", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "tags": ["nexcargo", "whatsapp", "notifications"]
+}

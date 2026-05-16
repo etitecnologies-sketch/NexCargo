@@ -1,0 +1,48 @@
+# Claude Code (configurações locais do editor)
+.claude/
+
+# Dependências
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+out/
+dist/
+build/
+
+# Variáveis de ambiente (NUNCA subir pro git — contém senhas!)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Turbo
+.turbo/
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Docker volumes locais
+infra/docker/volumes/
+
+# N8N dados locais
+n8n/.n8n/
