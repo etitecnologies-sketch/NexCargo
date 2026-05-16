@@ -1,28 +1,25 @@
 # ===========================================
-# NEXCARGO — Dockerfile de Produção
-# Multi-stage: build enxuto e imagem final pequena
+# NEXCARGO — Dockerfile (abordagem next start)
+# Funciona de forma confiável em monorepo
 # ===========================================
 
-# Estágio 1: instala dependências
 FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Copia os manifests de dependências do monorepo
 COPY package.json turbo.json tsconfig.base.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 
 RUN npm install
 
-# Estágio 2: compila o projeto
+# ---- Build ----
 FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Variáveis necessárias em tempo de build
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ARG NEXT_PUBLIC_APP_URL
@@ -30,27 +27,29 @@ ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Compila apenas o app web
 RUN npm run build -- --filter=@nexcargo/web
 
-# Estágio 3: imagem final de produção (bem menor)
+# ---- Runner ----
 FROM node:20-alpine AS runner
-WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+WORKDIR /app
 
-# Copia apenas o necessário para rodar
-COPY --from=builder /app/apps/web/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-
-USER nextjs
+# Copia dependências e build completos
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/apps/web/.next ./apps/web/.next
+COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
+COPY --from=builder /app/apps/web/next.config.mjs ./apps/web/next.config.mjs
+COPY --from=builder /app/packages ./packages
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Roda next start a partir da pasta web
+CMD ["node_modules/.bin/next", "start", "--dir", "apps/web", "-p", "3000"]
