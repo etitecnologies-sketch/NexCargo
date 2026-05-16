@@ -1,7 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  // Gera saída compacta para Docker/Railway
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   output: "standalone",
   experimental: {
     typedRoutes: true,
@@ -14,7 +12,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Variáveis de ambiente públicas (acessíveis no browser)
   env: {
     NEXT_PUBLIC_APP_NAME: "NexCargo",
     NEXT_PUBLIC_APP_VERSION: "0.1.0",
