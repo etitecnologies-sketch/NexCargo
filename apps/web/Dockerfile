@@ -51,5 +51,6 @@ COPY --from=builder /app/packages ./packages
 
 EXPOSE 3000
 
-# Roda next start a partir da pasta web
-CMD ["node_modules/.bin/next", "start", "--dir", "apps/web", "-p", "3000"]
+# Muda para a pasta da aplicação e inicia o servidor
+WORKDIR /app/apps/web
+CMD ["node", "/app/node_modules/.bin/next", "start", "-p", "3000"]
