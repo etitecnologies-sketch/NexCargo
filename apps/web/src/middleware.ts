@@ -41,10 +41,8 @@ export async function middleware(request: NextRequest) {
   // Verifica se o usuário está logado
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Não logado: redireciona para login (raiz / ou qualquer rota protegida)
-  if (!user && (pathname === "/" || pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/orders") || pathname.startsWith("/customers") ||
-    pathname.startsWith("/reports") || pathname.startsWith("/whatsapp"))) {
+  // Não logado → redireciona para login (protege qualquer rota não pública)
+  if (!user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     if (pathname !== "/") url.searchParams.set("redirect", pathname);
@@ -52,7 +50,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Logado tentando acessar login ou raiz → manda pro dashboard
-  if (user && (pathname === "/login" || pathname === "/")) {
+  if (pathname === "/login" || pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
