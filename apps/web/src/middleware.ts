@@ -10,6 +10,7 @@ export async function middleware(request: NextRequest) {
   // Deixa passar rotas públicas e assets
   const isPublic =
     PUBLIC_ROUTES.some((r) => pathname.startsWith(r)) ||
+    pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/track") ||
     pathname.startsWith("/api/webhooks") ||
     pathname.startsWith("/_next") ||

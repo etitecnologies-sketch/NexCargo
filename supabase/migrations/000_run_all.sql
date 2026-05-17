@@ -1,7 +1,5 @@
 -- ===========================================
 -- NEXCARGO — SETUP COMPLETO DO BANCO
--- Cole este arquivo inteiro no Supabase SQL Editor
--- e clique em "Run" uma única vez.
 -- ===========================================
 
 
@@ -183,7 +181,27 @@ CREATE TRIGGER trg_whatsapp_updated_at  BEFORE UPDATE ON whatsapp_instances FOR 
 
 
 -- ====================================================
--- PARTE 2: SEGURANÇA (RLS — cada empresa vê só os seus dados)
+-- PARTE 2: FUNÇÕES AUXILIARES (no schema public)
+-- Funções que identificam o tenant e o papel do usuário logado
+-- SECURITY DEFINER = roda como admin, evitando conflito com RLS
+-- ====================================================
+
+CREATE OR REPLACE FUNCTION public.get_tenant_id()
+RETURNS UUID AS $$
+  SELECT tenant_id FROM public.users WHERE id = auth.uid() LIMIT 1;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth;
+
+CREATE OR REPLACE FUNCTION public.get_user_role()
+RETURNS TEXT AS $$
+  SELECT COALESCE(
+    (SELECT role FROM public.users WHERE id = auth.uid() LIMIT 1),
+    'viewer'
+  );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth;
+
+
+-- ====================================================
+-- PARTE 3: SEGURANÇA (RLS — cada empresa vê só os seus dados)
 -- ====================================================
 
 ALTER TABLE tenants             ENABLE ROW LEVEL SECURITY;
@@ -196,50 +214,35 @@ ALTER TABLE whatsapp_instances  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whatsapp_messages   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications_log   ENABLE ROW LEVEL SECURITY;
 
--- Funções auxiliares com SECURITY DEFINER (evita conflito circular com RLS)
-CREATE OR REPLACE FUNCTION auth.tenant_id()
-RETURNS UUID AS $$
-  SELECT tenant_id FROM public.users WHERE id = auth.uid() LIMIT 1;
-$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth;
-
-CREATE OR REPLACE FUNCTION auth.user_role()
-RETURNS TEXT AS $$
-  SELECT COALESCE(
-    (SELECT role FROM public.users WHERE id = auth.uid() LIMIT 1),
-    'viewer'
-  );
-$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth;
-
--- Políticas de isolamento por tenant
-DROP POLICY IF EXISTS "tenant_isolation"                ON tenants;
-DROP POLICY IF EXISTS "users_tenant_isolation"          ON users;
-DROP POLICY IF EXISTS "customers_tenant_isolation"      ON customers;
-DROP POLICY IF EXISTS "orders_tenant_isolation"         ON orders;
-DROP POLICY IF EXISTS "order_events_tenant_isolation"   ON order_events;
-DROP POLICY IF EXISTS "labels_tenant_isolation"         ON labels;
+DROP POLICY IF EXISTS "tenant_isolation"                    ON tenants;
+DROP POLICY IF EXISTS "users_tenant_isolation"              ON users;
+DROP POLICY IF EXISTS "customers_tenant_isolation"          ON customers;
+DROP POLICY IF EXISTS "orders_tenant_isolation"             ON orders;
+DROP POLICY IF EXISTS "order_events_tenant_isolation"       ON order_events;
+DROP POLICY IF EXISTS "labels_tenant_isolation"             ON labels;
 DROP POLICY IF EXISTS "whatsapp_instances_tenant_isolation" ON whatsapp_instances;
 DROP POLICY IF EXISTS "whatsapp_messages_tenant_isolation"  ON whatsapp_messages;
 DROP POLICY IF EXISTS "notifications_log_tenant_isolation"  ON notifications_log;
-DROP POLICY IF EXISTS "operators_no_delete_orders"      ON orders;
-DROP POLICY IF EXISTS "viewers_readonly_orders"         ON orders;
-DROP POLICY IF EXISTS "viewers_readonly_customers"      ON customers;
+DROP POLICY IF EXISTS "operators_no_delete_orders"          ON orders;
+DROP POLICY IF EXISTS "viewers_readonly_orders"             ON orders;
+DROP POLICY IF EXISTS "viewers_readonly_customers"          ON customers;
 
-CREATE POLICY "tenant_isolation"                    ON tenants             FOR ALL USING (id = auth.tenant_id());
-CREATE POLICY "users_tenant_isolation"              ON users               FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "customers_tenant_isolation"          ON customers           FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "orders_tenant_isolation"             ON orders              FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "order_events_tenant_isolation"       ON order_events        FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "labels_tenant_isolation"             ON labels              FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "whatsapp_instances_tenant_isolation" ON whatsapp_instances  FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "whatsapp_messages_tenant_isolation"  ON whatsapp_messages   FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "notifications_log_tenant_isolation"  ON notifications_log   FOR ALL USING (tenant_id = auth.tenant_id());
-CREATE POLICY "operators_no_delete_orders"          ON orders              FOR DELETE USING (auth.user_role() IN ('owner', 'admin'));
-CREATE POLICY "viewers_readonly_orders"             ON orders              FOR INSERT WITH CHECK (auth.user_role() != 'viewer');
-CREATE POLICY "viewers_readonly_customers"          ON customers           FOR INSERT WITH CHECK (auth.user_role() != 'viewer');
+CREATE POLICY "tenant_isolation"                    ON tenants             FOR ALL USING (id = public.get_tenant_id());
+CREATE POLICY "users_tenant_isolation"              ON users               FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "customers_tenant_isolation"          ON customers           FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "orders_tenant_isolation"             ON orders              FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "order_events_tenant_isolation"       ON order_events        FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "labels_tenant_isolation"             ON labels              FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "whatsapp_instances_tenant_isolation" ON whatsapp_instances  FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "whatsapp_messages_tenant_isolation"  ON whatsapp_messages   FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "notifications_log_tenant_isolation"  ON notifications_log   FOR ALL USING (tenant_id = public.get_tenant_id());
+CREATE POLICY "operators_no_delete_orders"          ON orders              FOR DELETE USING (public.get_user_role() IN ('owner', 'admin'));
+CREATE POLICY "viewers_readonly_orders"             ON orders              FOR INSERT WITH CHECK (public.get_user_role() != 'viewer');
+CREATE POLICY "viewers_readonly_customers"          ON customers           FOR INSERT WITH CHECK (public.get_user_role() != 'viewer');
 
 
 -- ====================================================
--- PARTE 3: GATILHO — cria empresa+usuário automaticamente
+-- PARTE 4: GATILHO — cria empresa+usuário automaticamente
 -- ao criar conta no Supabase Auth
 -- ====================================================
 
@@ -264,7 +267,6 @@ BEGIN
   );
   tenant_slug := slug_base || '-' || substr(NEW.id::text, 1, 8);
 
-  -- Evita conflito de slug
   WHILE EXISTS (SELECT 1 FROM public.tenants WHERE slug = tenant_slug) LOOP
     slug_counter := slug_counter + 1;
     tenant_slug := slug_base || '-' || substr(NEW.id::text, 1, 8) || '-' || slug_counter;
