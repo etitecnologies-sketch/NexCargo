@@ -52,5 +52,6 @@ COPY --from=builder /app/packages ./packages
 EXPOSE 3000
 
 # Muda para a pasta da aplicação e inicia o servidor
+# Usa $PORT se Railway definir um, senão usa 3000
 WORKDIR /app/apps/web
-CMD ["node", "/app/node_modules/.bin/next", "start", "-p", "3000"]
+CMD ["sh", "-c", "node /app/node_modules/.bin/next start -p ${PORT:-3000}"]
