@@ -21,23 +21,21 @@ ALTER TABLE notifications_log   ENABLE ROW LEVEL SECURITY;
 
 -- ===========================================
 -- FUNÇÃO AUXILIAR: pega o tenant_id do usuário logado
--- O Supabase guarda o tenant_id no token JWT
+-- Busca diretamente na tabela users usando o ID do Supabase Auth
+-- SECURITY DEFINER = roda como admin, evitando conflito com RLS
 -- ===========================================
 CREATE OR REPLACE FUNCTION auth.tenant_id()
 RETURNS UUID AS $$
-  SELECT COALESCE(
-    (current_setting('request.jwt.claims', true)::jsonb ->> 'tenant_id')::UUID,
-    NULL
-  );
-$$ LANGUAGE sql STABLE;
+  SELECT tenant_id FROM public.users WHERE id = auth.uid() LIMIT 1;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth;
 
 CREATE OR REPLACE FUNCTION auth.user_role()
 RETURNS TEXT AS $$
   SELECT COALESCE(
-    current_setting('request.jwt.claims', true)::jsonb ->> 'role',
+    (SELECT role FROM public.users WHERE id = auth.uid() LIMIT 1),
     'viewer'
   );
-$$ LANGUAGE sql STABLE;
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, auth;
 
 -- ===========================================
 -- POLICIES: Usuários só veem dados do SEU tenant
