@@ -5,11 +5,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Mail, Lock } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
-  password: z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
+  password: z.string().min(6, "Mínimo 6 caracteres"),
 });
 
 type LoginData = z.infer<typeof loginSchema>;
@@ -19,90 +20,141 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
   });
 
   async function onSubmit(data: LoginData) {
     setError(null);
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+      const supabase = getSupabaseClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
       });
 
-      if (!response.ok) {
-        const body = await response.json();
-        setError(body.message ?? "E-mail ou senha incorretos.");
+      if (authError) {
+        setError("E-mail ou senha incorretos. Tente novamente.");
         return;
       }
 
       router.push("/dashboard");
+      router.refresh();
     } catch {
       setError("Erro de conexão. Tente novamente.");
     }
   }
 
+  const inputBase: React.CSSProperties = {
+    width: "100%",
+    padding: "11px 12px 11px 40px",
+    borderRadius: "12px",
+    border: "1.5px solid #e2e8f0",
+    background: "#f8fafc",
+    color: "#0f172a",
+    fontSize: "14px",
+    outline: "none",
+    transition: "all 0.2s",
+    fontFamily: "inherit",
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Campo de e-mail */}
+    <form onSubmit={handleSubmit(onSubmit)} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+
+      {/* Email */}
       <div>
-        <label htmlFor="email" className="label">E-mail</label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          placeholder="seu@email.com"
-          className="input"
-          {...register("email")}
-        />
+        <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>
+          E-mail
+        </label>
+        <div style={{ position: "relative" }}>
+          <Mail size={15} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
+          <input
+            type="email"
+            autoComplete="email"
+            placeholder="seu@email.com"
+            style={inputBase}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = "#3b82f6";
+              e.currentTarget.style.background = "#fff";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(59,130,246,0.12)";
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = "#e2e8f0";
+              e.currentTarget.style.background = "#f8fafc";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+            {...register("email")}
+          />
+        </div>
         {errors.email && (
-          <p className="text-danger-500 text-xs mt-1">{errors.email.message}</p>
+          <p style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}>{errors.email.message}</p>
         )}
       </div>
 
-      {/* Campo de senha */}
+      {/* Senha */}
       <div>
-        <label htmlFor="password" className="label">Senha</label>
-        <div className="relative">
+        <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "6px" }}>
+          Senha
+        </label>
+        <div style={{ position: "relative" }}>
+          <Lock size={15} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", pointerEvents: "none" }} />
           <input
-            id="password"
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             placeholder="••••••••"
-            className="input pr-10"
+            style={{ ...inputBase, paddingRight: "44px" }}
+            onFocus={e => {
+              e.currentTarget.style.borderColor = "#3b82f6";
+              e.currentTarget.style.background = "#fff";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(59,130,246,0.12)";
+            }}
+            onBlur={e => {
+              e.currentTarget.style.borderColor = "#e2e8f0";
+              e.currentTarget.style.background = "#f8fafc";
+              e.currentTarget.style.boxShadow = "none";
+            }}
             {...register("password")}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", background: "none", border: "none", cursor: "pointer", padding: 4 }}
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
         {errors.password && (
-          <p className="text-danger-500 text-xs mt-1">{errors.password.message}</p>
+          <p style={{ color: "#ef4444", fontSize: "12px", marginTop: "4px" }}>{errors.password.message}</p>
         )}
       </div>
 
-      {/* Mensagem de erro geral */}
+      {/* Erro geral */}
       {error && (
-        <div className="rounded-lg bg-danger-50 border border-danger-200 p-3">
-          <p className="text-danger-600 text-sm">{error}</p>
+        <div style={{ padding: "12px 14px", borderRadius: "10px", background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", fontSize: "13px" }}>
+          {error}
         </div>
       )}
 
-      {/* Botão de entrar */}
+      {/* Botão entrar */}
       <button
         type="submit"
         disabled={isSubmitting}
-        className="btn-primary w-full justify-center"
+        style={{
+          width: "100%",
+          padding: "12px",
+          borderRadius: "12px",
+          border: "none",
+          background: isSubmitting ? "#93c5fd" : "linear-gradient(135deg, #2563eb, #4f46e5)",
+          color: "#fff",
+          fontSize: "14px",
+          fontWeight: 700,
+          cursor: isSubmitting ? "not-allowed" : "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+          letterSpacing: "0.01em",
+        }}
       >
         {isSubmitting ? (
           <>
@@ -110,15 +162,15 @@ export function LoginForm() {
             Entrando...
           </>
         ) : (
-          "Entrar"
+          "Entrar na plataforma"
         )}
       </button>
 
-      <div className="text-center">
-        <a href="/forgot-password" className="text-brand-600 text-sm hover:underline">
+      <p style={{ textAlign: "center" }}>
+        <a href="/forgot-password" style={{ color: "#3b82f6", fontSize: "13px", textDecoration: "none" }}>
           Esqueceu sua senha?
         </a>
-      </div>
+      </p>
     </form>
   );
 }
